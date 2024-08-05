@@ -1,5 +1,6 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template_string, request, jsonify
 import requests
+import json
 
 app = Flask(__name__)
 
@@ -162,17 +163,15 @@ countries = {
     'za': 'South Africa',
     'zw': 'Zimbabwe'
 }
-
-@app.route('/')
-def index():
-    return render_template('index.html', countries=countries)
-
 @app.route('/search', methods=['GET'])
 def search():
     query = request.args.get('query')
     entity = request.args.get('entity', 'tvSeason')
     country = request.args.get('country', 'us')
-    
+
+    if not query:
+        return jsonify({"error": "No query provided"}), 400
+
     response = requests.get(apiURL, params={'query': query, 'entity': entity, 'country': country, 'type': 'request'})
     data = response.json()
     
@@ -182,7 +181,39 @@ def search():
     final_response = requests.post(apiURL, data={'json': json.dumps(jsonp_data), 'type': 'data', 'entity': entity})
     final_data = final_response.json()
     
-    return jsonify(final_data)
+    results_html = ""
+    if 'error' in final_data:
+        results_html += f"<h3>{final_data['error']}</h3>"
+    elif not final_data:
+        results_html += "<h3>No results found.</h3>"
+    else:
+        for result in final_data:
+            result_html = f"<div><h3>{result['title']}</h3>"
+            if entity not in ['software', 'iPadSoftware', 'macSoftware']:
+                uncompressed = result.get('uncompressed')
+                hires = result.get('hires')
+                result_html += f"<p><a href='{result['url']}' target='_blank'>Standard Resolution</a> | <a href='{uncompressed or hires}' target='_blank'>{'Uncompressed High Resolution' if uncompressed else 'High Resolution'}</a></p>"
+            elif entity in ['software', 'iPadSoftware', 'macSoftware']:
+                result_html += f"<p><a href='{result['appstore']}' target='_blank'>Application Link</a></p>"
+            result_html += "</div>"
+            results_html += result_html
+
+    return render_template_string("""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Search Results</title>
+    </head>
+    <body>
+        <a href="/">Go Back</a>
+        <div id="results">
+            {{ results_html | safe }}
+        </div>
+    </body>
+    </html>
+    """, results_html=results_html)
 
 if __name__ == '__main__':
     app.run(debug=True)
