@@ -2,127 +2,35 @@
 header("Access-Control-Allow-Origin: *");
 
 if (isset($_GET['type']) && $_GET['type'] == 'request') {
-	$search = $_GET['query'];
-	if ($search) {
-		$entity = ($_GET['entity']) ? $_GET['entity'] : 'tvSeason';
-		$country = ($_GET['country']) ? $_GET['country'] : 'us';
-		$width = 600;
-		$height = 600;
-
-		$shortFilm = false;
-		if ($entity == 'shortFilm') {
-			$shortFilm = true;
-			$entity = 'movie';
-		}
-		$url = 'https://itunes.apple.com/search?term='.urlencode($search).'&country='.$country.'&entity='.$entity;
-		if ($shortFilm) {
-			$url .= '&attribute=shortFilmTerm';
-			$entity = 'shortFilm';
-		}
-		if ($_GET['entity'] == 'id' || $_GET['entity'] == 'idAlbum') {
-			$url = 'https://itunes.apple.com/lookup?id='.urlencode($search).'&country='.$_GET['country'];
-		}
-		$url .= '&limit=25';
-		echo json_encode(["url" => $url]);
-		exit;
-	}
+    $search = $_GET['query'];
+    if ($search) {
+        $country = ($_GET['country']) ? $_GET['country'] : 'us';
+        $url = 'https://www.googleapis.com/books/v1/volumes?q=' . urlencode($search) . '&country=' . $country . '&maxResults=10';
+        echo json_encode(["url" => $url]);
+        exit;
+    }
 }
 
 if (isset($_POST['type']) && $_POST['type'] == 'data') {
+    $output = array();
 
-	$output = array();
+    $json = json_decode($_POST['json']);
+    
+    foreach ($json->items as $item) {
+        $data = array();
+        $data['title'] = $item->volumeInfo->title;
+        $data['authors'] = isset($item->volumeInfo->authors) ? implode(', ', $item->volumeInfo->authors) : 'Unknown';
+        $data['publishedDate'] = $item->volumeInfo->publishedDate;
+        $data['description'] = $item->volumeInfo->description;
+        $data['averageRating'] = isset($item->volumeInfo->averageRating) ? $item->volumeInfo->averageRating : 'No rating';
+        $data['ratingsCount'] = isset($item->volumeInfo->ratingsCount) ? $item->volumeInfo->ratingsCount : 'No ratings';
+        
+        if ($data['title']) {
+            $output[] = $data;
+        }
+    }
 
-	$json = json_decode($_POST['json']);
-	$entity = ($_POST['entity']) ? $_POST['entity'] : 'tvSeason';
-
-	foreach ($json->results as $result) {
-
-		if (($_POST['entity'] == 'id' && $result->kind != 'feature-movie') && ($_POST['entity'] == 'id' && $result->wrapperType != 'collection')) {
-			continue;
-		}
-
-		if ($_POST['entity'] == 'idAlbum' && $result->collectionType != 'Album') {
-			continue;
-		}
-
-		$width = 600;
-		$height = 600;
-		
-		$data = array();
-		$data['url'] = str_replace('100x100', '600x600', $result->artworkUrl100);
-
-		$hires = str_replace('100x100bb', '100000x100000-999', $result->artworkUrl100);
-		$parts = parse_url($hires);
-		$hires = 'https://is5-ssl.mzstatic.com'.$parts['path'];
-
-		$data['hires'] = $hires;
-		$data['title'] = ($entity == 'movie') ? $result->trackName : $result->collectionName;
-
-		if ($_POST['entity'] == 'album' || $_POST['entity'] == 'idAlbum') {
-			$parts = explode('/image/thumb/', $hires);
-			if (count($parts) == 2) {
-				$parts = explode('/', $parts[1]);
-				array_pop($parts);
-				$data['uncompressed'] = 'https://a5.mzstatic.com/us/r1000/0/'.implode('/', $parts);
-			}
-		}
-
-		switch ($entity) {
-			case 'musicVideo':
-				$data['title'] = $result->trackName.' (by '.$result->artistName.')';
-				$data['url'] = $hires;
-				$width = 640;
-				$height = 464;
-				break;
-			case 'tvSeason':
-				$data['title'] = $result->collectionName;
-				break;
-			case 'movie':
-			case 'id':
-			case 'shortFilm':
-				$data['title'] = $result->trackName;
-				if (!$data['title']) {
-					$data['title'] = $result->collectionName;
-				}
-				$width = 400;
-				break;
-			case 'ebook':
-				$data['title'] = $result->trackName.' (by '.$result->artistName.')';
-				$width = 400;
-				break;
-			case 'album':
-			case 'idAlbum':
-				$data['title'] = $result->collectionName.' (by '.$result->artistName.')';
-				break;
-			case 'audiobook':
-				$data['title'] = $result->collectionName.' (by '.$result->artistName.')';
-				break;
-			case 'podcast':
-				$data['title'] = $result->collectionName.' (by '.$result->artistName.')';
-				break;
-			case 'software':
-			case 'iPadSoftware':
-			case 'macSoftware':
-				$data['url'] = str_replace('512x512bb', '1024x1024bb', $result->artworkUrl512);
-				$data['appstore'] = $result->trackViewUrl;
-				$data['title'] = $result->trackName;
-				$width = 512;
-				$height = 512;
-				break;
-			default:
-				break;
-		}
-
-		if ($data['title']) {
-			$data['width'] = $width;
-			$data['height'] = $height;
-			$output[] = $data;	
-		}
-	}
-
-	echo json_encode($output);
-	exit;
+    echo json_encode($output);
+    exit;
 }
-
-
 ?>
